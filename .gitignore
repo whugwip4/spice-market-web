@@ -1,0 +1,4 @@
+.codex-server.err.log
+.codex-server.log
+.codex-server.pid
+storage/sessions/

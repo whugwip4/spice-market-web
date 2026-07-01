@@ -1,0 +1,10 @@
+<svg width="156" height="48" viewBox="0 0 156 48" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <rect x="0" y="4" width="40" height="40" rx="12" fill="#4B2E1F"/>
+  <path d="M10 31c7-1 15-6 21-17" stroke="#E8D8C2" stroke-width="3" stroke-linecap="round"/>
+  <path d="M17 16c-5 1-8 4-9 8 5 1 9-1 11-6" fill="#6F8A57"/>
+  <path d="M27 12c-5 0-8 2-10 6 5 2 9 1 12-4" fill="#D9B98F"/>
+  <path d="M12 34h18c-1 5-4 8-9 8s-8-3-9-8Z" fill="#F8F0E4"/>
+  <text x="50" y="21" font-family="Inter, Arial, sans-serif" font-size="20" font-weight="800" fill="#261A14">Spice</text>
+  <text x="50" y="40" font-family="Inter, Arial, sans-serif" font-size="20" font-weight="800" fill="#B64926">Market</text>
+</svg>
+
