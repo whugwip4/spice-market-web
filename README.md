@@ -9,7 +9,9 @@
 3. Запустить сайт из папки проекта:
 
 ```powershell
-& "C:\Program Files\xampp\php\php.exe" -S 127.0.0.1:8081 -t public public/router.php
+& "C:\Program Files\xampp\php\php.exe" `
+  -S 127.0.0.1:8081 `
+  -t public public/router.php
 ```
 
 4. Открыть в браузере:
