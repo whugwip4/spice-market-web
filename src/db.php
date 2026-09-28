@@ -2,6 +2,9 @@
 
 declare(strict_types=1);
 
+// время в PHP совпадает со временем сервера MySQL (Москва), иначе даты в статистике расходятся на час
+date_default_timezone_set('Europe/Moscow');
+
 function spice_config(): array
 {
     static $config = null;
@@ -64,6 +67,17 @@ function spice_db_available(): bool
     return spice_pdo() instanceof PDO;
 }
 
+function spice_db_query_count(bool $increment = false): int
+{
+    static $count = 0;
+
+    if ($increment) {
+        $count++;
+    }
+
+    return $count;
+}
+
 function spice_fetch_all(string $sql, array $params = []): array
 {
     $pdo = spice_pdo();
@@ -72,6 +86,7 @@ function spice_fetch_all(string $sql, array $params = []): array
         return [];
     }
 
+    spice_db_query_count(true);
     $statement = $pdo->prepare($sql);
     $statement->execute($params);
 
@@ -93,6 +108,7 @@ function spice_execute(string $sql, array $params = []): bool
         return false;
     }
 
+    spice_db_query_count(true);
     $statement = $pdo->prepare($sql);
 
     return $statement->execute($params);

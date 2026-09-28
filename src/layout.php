@@ -19,6 +19,8 @@ if (session_status() !== PHP_SESSION_ACTIVE) {
     session_start();
 }
 
+stats_tracker_boot();
+
 function e(mixed $value): string
 {
     return htmlspecialchars((string)$value, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
@@ -104,6 +106,7 @@ function require_admin(): void
         return;
     }
 
+    stats_log_auth_event('admin_denied', current_user_id(), current_user_email());
     http_response_code(403);
     page_start('Доступ запрещён', 'account');
     ?>
@@ -123,8 +126,24 @@ function require_admin(): void
     exit;
 }
 
+function admin_nav(string $active): void
+{
+    $items = [
+        'tables' => ['/admin/', 'Таблицы БД'],
+        'stats' => ['/admin/stats.php', 'Статистика'],
+    ];
+    ?>
+    <nav class="admin-nav" aria-label="Разделы админ-панели">
+        <?php foreach ($items as $key => [$href, $label]): ?>
+            <a class="chip<?= $key === $active ? ' is-active' : '' ?>" href="<?= e($href) ?>"><?= e($label) ?></a>
+        <?php endforeach; ?>
+    </nav>
+    <?php
+}
+
 function page_start(string $title, string $active = ''): void
 {
+    stats_tracker_page();
     $bodyClass = $active === 'admin' ? ' class="admin-page"' : '';
     $mainClass = 'page-shell' . ($active === 'admin' ? ' page-shell-admin' : '');
     ?><!doctype html>

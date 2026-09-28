@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 require_once __DIR__ . '/db.php';
+require_once __DIR__ . '/tracker.php';
 
 function spice_fallback_categories(): array
 {
@@ -720,6 +721,9 @@ function spice_api_recipe(): array
 
     $url = $fallback['api_url'];
     $json = null;
+    $status = null;
+    $errorMessage = '';
+    $startedAt = microtime(true);
 
     if (function_exists('curl_init')) {
         $curl = curl_init($url);
@@ -732,6 +736,7 @@ function spice_api_recipe(): array
         ]);
         $response = curl_exec($curl);
         $status = (int)curl_getinfo($curl, CURLINFO_RESPONSE_CODE);
+        $errorMessage = curl_error($curl);
         curl_close($curl);
 
         if (is_string($response) && $status >= 200 && $status < 300) {
@@ -747,13 +752,21 @@ function spice_api_recipe(): array
         }
     }
 
-    if ($json === null) {
-        return $fallback;
-    }
+    $data = $json !== null ? json_decode($json, true) : null;
+    $meal = is_array($data) ? ($data['meals'][0] ?? null) : null;
+    $received = is_array($meal);
 
-    $data = json_decode($json, true);
-    $meal = $data['meals'][0] ?? null;
-    if (!is_array($meal)) {
+    stats_log_api_request(
+        'TheMealDB',
+        $url,
+        $status ?: null,
+        (microtime(true) - $startedAt) * 1000,
+        $received,
+        !$received,
+        $received ? '' : ($errorMessage ?: 'Пустой или некорректный ответ API')
+    );
+
+    if (!$received) {
         return $fallback;
     }
 
@@ -884,7 +897,25 @@ function spice_create_order(array $customer, array $cart): array
 
 function spice_admin_tables(): array
 {
-    return array_merge(spice_admin_base_tables(), spice_admin_views());
+    return array_merge(spice_admin_base_tables(), spice_admin_views(), spice_admin_log_tables());
+}
+
+// Журналы модуля статистики открываются в админке только для просмотра, новые записи сверху
+function spice_admin_log_tables(): array
+{
+    return [
+        'site_visits',
+        'auth_events',
+        'search_queries',
+        'api_requests',
+        'app_errors',
+        'health_checks',
+    ];
+}
+
+function spice_admin_is_log_table(string $table): bool
+{
+    return in_array($table, spice_admin_log_tables(), true);
 }
 
 function spice_admin_base_tables(): array
@@ -975,6 +1006,15 @@ function spice_admin_table_rows(string $table): array
 {
     if (!spice_admin_is_allowed_object($table)) {
         return [];
+    }
+
+    if (spice_admin_is_log_table($table)) {
+        $columns = spice_admin_table_columns($table);
+        $primaryKey = $columns ? (string)$columns[0]['COLUMN_NAME'] : '';
+
+        return $primaryKey !== ''
+            ? spice_fetch_all(sprintf('SELECT * FROM `%s` ORDER BY %s DESC LIMIT 100', $table, spice_quote_identifier($primaryKey)))
+            : [];
     }
 
     return spice_fetch_all("SELECT * FROM `$table` LIMIT 100");

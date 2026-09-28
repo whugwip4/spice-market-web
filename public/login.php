@@ -9,6 +9,9 @@ $next = safe_next_url((string)($_GET['next'] ?? $_POST['next'] ?? '/account.php'
 $adminRequired = isset($_GET['admin_required']) || isset($_POST['admin_required']);
 
 if (isset($_GET['logout'])) {
+    if (is_logged_in()) {
+        stats_log_auth_event('logout', current_user_id(), current_user_email());
+    }
     logout_current_user();
     $redirect = '/login.php';
     $query = [];
@@ -39,6 +42,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
         if ($user) {
             set_current_user($user);
+            stats_log_auth_event('login_success', (int)$user['user_id'], $email);
 
             if (str_starts_with($next, '/admin') && !is_admin()) {
                 header('Location: /account.php?admin_denied=1');
@@ -49,6 +53,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             exit;
         }
 
+        stats_log_auth_event('login_failed', null, $email);
         $error = 'Неверный email или пароль.';
     }
 }

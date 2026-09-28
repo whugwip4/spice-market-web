@@ -123,6 +123,7 @@ function admin_render_form(string $table, array $columnsMeta, ?array $row, strin
 $table = (string)($_GET['table'] ?? '');
 $allowed = spice_admin_is_allowed_object($table);
 $isBaseTable = spice_admin_is_base_table($table);
+$isLogTable = spice_admin_is_log_table($table);
 $columnsMeta = $allowed ? spice_admin_table_columns($table) : [];
 $primaryKey = $allowed ? spice_admin_primary_key($table) : null;
 $error = null;
@@ -192,9 +193,13 @@ page_start($allowed ? 'Таблица ' . $table : 'Таблица не найд
             <div>
                 <h1 class="page-title"><?= e($table) ?></h1>
                 <p class="lead">
-                    <?= $isBaseTable
-                        ? 'Первые 100 строк таблицы. Для обычных таблиц доступны добавление, изменение и удаление данных.'
-                        : 'Представление открыто только для просмотра, данные формируются запросом к базе.' ?>
+                    <?php if ($isBaseTable): ?>
+                        Первые 100 строк таблицы. Для обычных таблиц доступны добавление, изменение и удаление данных.
+                    <?php elseif ($isLogTable): ?>
+                        Последние 100 записей журнала, новые сверху. Записи создаются автоматически модулем статистики.
+                    <?php else: ?>
+                        Представление открыто только для просмотра, данные формируются запросом к базе.
+                    <?php endif; ?>
                 </p>
             </div>
             <?php if ($isBaseTable): ?>
@@ -210,7 +215,9 @@ page_start($allowed ? 'Таблица ' . $table : 'Таблица не найд
             <div class="message error">Ошибка: <?= e($error) ?></div>
         <?php endif; ?>
 
-        <?php if (!$isBaseTable): ?>
+        <?php if ($isLogTable): ?>
+            <div class="message">Журнал статистики: только просмотр.</div>
+        <?php elseif (!$isBaseTable): ?>
             <div class="message">VIEW: просмотр без редактирования.</div>
         <?php endif; ?>
 

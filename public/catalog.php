@@ -12,6 +12,10 @@ $products = spice_products([
     'category' => $category,
 ]);
 
+if ($search !== '' && spice_db_available()) {
+    stats_log_search($search, count($products), $category);
+}
+
 page_start('Каталог', 'catalog');
 ?>
 

@@ -7,6 +7,12 @@ require_once __DIR__ . '/../src/layout.php';
 $slug = trim((string)($_GET['slug'] ?? 'smoked-paprika'));
 $product = spice_product_by_slug($slug);
 
+if ($product) {
+    stats_tracker_context(['product_id' => (int)$product['product_id']]);
+} else {
+    http_response_code(404);
+}
+
 page_start($product ? (string)$product['name'] : 'Товар не найден', 'catalog');
 ?>
 

@@ -12,5 +12,9 @@ return [
         'user' => getenv('SPICE_DB_USER') ?: 'root',
         'password' => getenv('SPICE_DB_PASSWORD') ?: '',
     ],
+    'stats' => [
+        // соль для хэширования IP-адресов в журналах статистики
+        'salt' => getenv('SPICE_STATS_SALT') ?: 'spice-market-stats-2026',
+    ],
 ];
 

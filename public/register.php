@@ -46,6 +46,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
             if ($user) {
                 set_current_user($user);
+                stats_log_auth_event('register', (int)$user['user_id'], (string)$user['email']);
                 header('Location: /account.php');
                 exit;
             }
