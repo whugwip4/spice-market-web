@@ -437,9 +437,8 @@ function spice_authenticate_user(string $email, string $password): ?array
     }
 
     $hash = (string)($user['password_hash'] ?? '');
-    $demoHash = str_contains($hash, 'spicemarketstudenthash');
 
-    if ($demoHash || ($hash !== '' && password_verify($password, $hash))) {
+    if ($hash !== '' && password_verify($password, $hash)) {
         unset($user['password_hash']);
         return $user;
     }
@@ -454,7 +453,8 @@ function spice_user_by_id(int $userId): ?array
         ['id' => $userId]
     );
 
-    if ($user) {
+    // демонстрационный профиль подставляется только при недоступной базе данных
+    if ($user || spice_db_available()) {
         return $user;
     }
 
@@ -779,6 +779,16 @@ function spice_api_recipe(): array
 
 function spice_create_order(array $customer, array $cart): array
 {
+    $userId = (int)($customer['user_id'] ?? 0);
+    if ($userId <= 0) {
+        return ['ok' => false, 'message' => 'Для оформления заказа войдите в личный кабинет.'];
+    }
+
+    if (!in_array($customer['delivery_method'] ?? '', ['pickup', 'courier'], true)
+        || !in_array($customer['payment_method'] ?? '', ['cash', 'card_on_delivery'], true)) {
+        return ['ok' => false, 'message' => 'Выберите способ доставки и оплаты из списка.'];
+    }
+
     $items = [];
     foreach ($cart as $slug => $quantity) {
         $quantity = max(1, min(99, (int)$quantity));
@@ -814,7 +824,6 @@ function spice_create_order(array $customer, array $cart): array
     try {
         $pdo->beginTransaction();
         $orderNumber = 'SM-' . date('Ymd-His');
-        $userId = (int)($customer['user_id'] ?? 2);
 
         $statement = $pdo->prepare('
             INSERT INTO orders (
@@ -867,7 +876,9 @@ function spice_create_order(array $customer, array $cart): array
             $pdo->rollBack();
         }
 
-        return ['ok' => false, 'message' => 'Ошибка сохранения заказа: ' . $error->getMessage()];
+        error_log('Spice Market order error: ' . $error->getMessage());
+
+        return ['ok' => false, 'message' => 'Не удалось сохранить заказ. Попробуйте ещё раз.'];
     }
 }
 

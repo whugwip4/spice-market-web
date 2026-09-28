@@ -39,10 +39,15 @@ http://127.0.0.1:8081/
 
 Административная панель открывается только после входа под пользователем с ролью администратора.
 
+Демонстрационные учётные записи из `db\spice_market.sql`:
+
 ```text
-Email: admin@spicemarket.local
-Password: admin123
+Администратор: sultan@example.com / Admin2026
+Покупатели:    anna.petrova@example.com, ivan.smirnov@example.com,
+               maria.kuznetsova@example.com, dmitry.orlov@example.com / Spice2026
 ```
+
+Оформление заказа доступно только после входа в личный кабинет.
 
 ## База данных
 

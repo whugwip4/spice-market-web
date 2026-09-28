@@ -25,8 +25,7 @@ if (isset($_GET['logout'])) {
     exit;
 }
 
-$defaultEmail = $adminRequired ? 'sultan@example.com' : (current_user_email() ?: 'anna.petrova@example.com');
-$email = trim((string)($_POST['email'] ?? $defaultEmail));
+$email = trim((string)($_POST['email'] ?? current_user_email()));
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $password = trim((string)($_POST['password'] ?? ''));
@@ -50,7 +49,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             exit;
         }
 
-        $error = 'Пользователь не найден или пароль указан неверно. Для администратора используйте sultan@example.com, для покупателя anna.petrova@example.com.';
+        $error = 'Неверный email или пароль.';
     }
 }
 
@@ -78,7 +77,7 @@ page_start('Вход', 'account');
             </label>
             <label>
                 Пароль
-                <input class="input" type="password" name="password" minlength="1" placeholder="Любой непустой пароль" required>
+                <input class="input" type="password" name="password" required>
             </label>
             <button class="btn" type="submit">Войти</button>
             <a class="chip" href="/register.php">Создать аккаунт</a>

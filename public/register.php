@@ -36,6 +36,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if (!preg_match('/^(?=.*[A-Za-z])(?=.*\d).{6,}$/', $password)) {
         $errors[] = 'Пароль должен быть не короче 6 символов и содержать латинскую букву и цифру.';
     }
+    if (!$errors && spice_user_by_email($form['email'])) {
+        $errors[] = 'Пользователь с таким email уже зарегистрирован.';
+    }
 
     if (!$errors) {
         try {
@@ -47,7 +50,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 exit;
             }
         } catch (Throwable $exception) {
-            $error = 'Не удалось создать пользователя: ' . $exception->getMessage();
+            error_log('Spice Market register error: ' . $exception->getMessage());
+            $error = 'Не удалось создать пользователя. Попробуйте ещё раз.';
         }
     } else {
         $error = implode(' ', $errors);

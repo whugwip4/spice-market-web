@@ -4,7 +4,13 @@ declare(strict_types=1);
 
 require_once __DIR__ . '/../src/layout.php';
 
-$user = is_logged_in() ? spice_user_by_id(current_user_id()) : null;
+// оформление заказа доступно только авторизованному покупателю; корзина хранится в браузере и не теряется
+if (!is_logged_in()) {
+    header('Location: /login.php?next=' . rawurlencode('/checkout.php'));
+    exit;
+}
+
+$user = spice_user_by_id(current_user_id());
 $message = null;
 $messageType = 'ok';
 
@@ -12,7 +18,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $cartPayload = json_decode((string)($_POST['cart_payload'] ?? '{}'), true);
     $cart = is_array($cartPayload) ? $cartPayload : [];
     $customer = [
-        'user_id' => current_user_id() > 0 ? current_user_id() : 2,
+        'user_id' => current_user_id(),
         'customer_name' => trim((string)($_POST['customer_name'] ?? '')),
         'phone' => trim((string)($_POST['phone'] ?? '')),
         'delivery_address' => trim((string)($_POST['delivery_address'] ?? '')),
