@@ -286,6 +286,11 @@ function stats_page_label(string $page): string
         '/login.php' => 'Вход',
         '/register.php' => 'Регистрация',
         '/account.php' => 'Личный кабинет',
+        '/admin/' => 'Админка: главная',
+        '/admin/table.php' => 'Админка: таблица БД',
+        '/admin/stats.php' => 'Админка: посещаемость',
+        '/admin/sales.php' => 'Админка: продажи',
+        '/admin/monitoring.php' => 'Админка: мониторинг',
     ][$page] ?? $page;
 }
 
@@ -472,6 +477,271 @@ function stats_recent_visits(int $limit = 12): array
     );
 }
 
+// ---------- Продажи, покупатели, каталог ----------
+
+function stats_orders_where(array $period, string $alias = 'o'): string
+{
+    return "$alias.created_at >= :start AND $alias.created_at < :end" . stats_orders_demo_filter($period, $alias);
+}
+
+function stats_order_status_label(string $status): string
+{
+    return ['new' => 'Новые', 'processing' => 'В обработке', 'completed' => 'Выполненные', 'cancelled' => 'Отменённые'][$status] ?? $status;
+}
+
+function stats_sales_summary(array $period, bool $previous = false): array
+{
+    $where = stats_orders_where($period);
+    $row = spice_fetch_one(
+        "
+        SELECT
+            COUNT(*) AS orders_count,
+            COALESCE(SUM(o.status = 'cancelled'), 0) AS cancelled_count,
+            COALESCE(SUM(CASE WHEN o.status <> 'cancelled' THEN o.total_amount ELSE 0 END), 0) AS revenue,
+            COUNT(DISTINCT o.user_id) AS buyers
+        FROM orders o
+        WHERE $where
+        ",
+        stats_bounds($period, $previous)
+    ) ?? [];
+
+    // покупатель считается повторным, если за период у него два заказа и больше
+    $repeat = spice_fetch_one(
+        "
+        SELECT COALESCE(SUM(buyer.orders_count >= 2), 0) AS repeat_buyers
+        FROM (SELECT o.user_id, COUNT(*) AS orders_count FROM orders o WHERE $where GROUP BY o.user_id) buyer
+        ",
+        stats_bounds($period, $previous)
+    ) ?? [];
+
+    $ordersCount = (int)($row['orders_count'] ?? 0);
+    $cancelled = (int)($row['cancelled_count'] ?? 0);
+    $buyers = (int)($row['buyers'] ?? 0);
+    $revenue = (float)($row['revenue'] ?? 0);
+
+    return [
+        'orders' => $ordersCount,
+        'revenue' => $revenue,
+        'avg_check' => $ordersCount - $cancelled > 0 ? round($revenue / ($ordersCount - $cancelled), 2) : 0.0,
+        'cancel_rate' => $ordersCount > 0 ? round($cancelled / $ordersCount * 100, 1) : 0.0,
+        'buyers' => $buyers,
+        'repeat_rate' => $buyers > 0 ? round((int)($repeat['repeat_buyers'] ?? 0) / $buyers * 100, 1) : 0.0,
+    ];
+}
+
+function stats_order_statuses(array $period): array
+{
+    $counts = array_column(spice_fetch_all(
+        'SELECT o.status, COUNT(*) AS orders_count FROM orders o WHERE ' . stats_orders_where($period) . ' GROUP BY o.status',
+        stats_bounds($period)
+    ), 'orders_count', 'status');
+
+    $result = [];
+    foreach (['new', 'processing', 'completed', 'cancelled'] as $status) {
+        $result[] = ['status' => $status, 'label' => stats_order_status_label($status), 'orders' => (int)($counts[$status] ?? 0)];
+    }
+
+    return $result;
+}
+
+function stats_order_methods(array $period, string $column): array
+{
+    $labels = $column === 'delivery_method'
+        ? ['courier' => 'Курьер', 'pickup' => 'Самовывоз']
+        : ['card_on_delivery' => 'Картой при получении', 'cash' => 'Наличными'];
+    $column = $column === 'delivery_method' ? 'delivery_method' : 'payment_method';
+
+    $counts = array_column(spice_fetch_all(
+        "SELECT o.$column AS method, COUNT(*) AS orders_count FROM orders o WHERE " . stats_orders_where($period) . " GROUP BY o.$column",
+        stats_bounds($period)
+    ), 'orders_count', 'method');
+
+    $result = [];
+    foreach ($labels as $method => $label) {
+        $result[] = ['label' => $label, 'orders' => (int)($counts[$method] ?? 0)];
+    }
+
+    return $result;
+}
+
+function stats_top_products_by_revenue(array $period, int $limit = 8): array
+{
+    return array_map(static fn(array $row): array => [
+        'name' => (string)$row['name'],
+        'quantity' => (int)$row['quantity'],
+        'orders' => (int)$row['orders_count'],
+        'revenue' => (float)$row['revenue'],
+    ], spice_fetch_all(
+        '
+        SELECT p.name, SUM(oi.quantity) AS quantity, COUNT(DISTINCT o.order_id) AS orders_count, SUM(oi.line_total) AS revenue
+        FROM order_items oi
+        JOIN orders o ON o.order_id = oi.order_id
+        JOIN products p ON p.product_id = oi.product_id
+        WHERE ' . stats_orders_where($period) . " AND o.status <> 'cancelled'
+        GROUP BY p.product_id, p.name
+        ORDER BY revenue DESC
+        LIMIT " . max(1, $limit),
+        stats_bounds($period)
+    ));
+}
+
+function stats_revenue_by_category(array $period): array
+{
+    return array_map(static fn(array $row): array => [
+        'name' => (string)$row['name'],
+        'quantity' => (int)$row['quantity'],
+        'revenue' => (float)$row['revenue'],
+    ], spice_fetch_all(
+        '
+        SELECT c.name, SUM(oi.quantity) AS quantity, SUM(oi.line_total) AS revenue
+        FROM order_items oi
+        JOIN orders o ON o.order_id = oi.order_id
+        JOIN products p ON p.product_id = oi.product_id
+        JOIN categories c ON c.category_id = p.category_id
+        WHERE ' . stats_orders_where($period) . " AND o.status <> 'cancelled'
+        GROUP BY c.category_id, c.name
+        ORDER BY revenue DESC
+        ",
+        stats_bounds($period)
+    ));
+}
+
+// Воронка: сколько визитов дошло до карточки товара, корзины и оформления, сколько оформлено заказов
+function stats_funnel(array $period): array
+{
+    $row = spice_fetch_one(
+        "
+        SELECT
+            COUNT(DISTINCT v.session_id) AS visits,
+            COUNT(DISTINCT CASE WHEN v.page = '/product.php' THEN v.session_id END) AS product_views,
+            COUNT(DISTINCT CASE WHEN v.page = '/cart.php' THEN v.session_id END) AS cart_views,
+            COUNT(DISTINCT CASE WHEN v.page = '/checkout.php' THEN v.session_id END) AS checkout_views
+        FROM site_visits v
+        WHERE " . stats_visits_where($period),
+        stats_bounds($period)
+    ) ?? [];
+
+    return [
+        ['label' => 'Визиты', 'value' => (int)($row['visits'] ?? 0)],
+        ['label' => 'Открыли товар', 'value' => (int)($row['product_views'] ?? 0)],
+        ['label' => 'Открыли корзину', 'value' => (int)($row['cart_views'] ?? 0)],
+        ['label' => 'Начали оформление', 'value' => (int)($row['checkout_views'] ?? 0)],
+        ['label' => 'Оформили заказ', 'value' => stats_sales_summary($period)['orders']],
+    ];
+}
+
+function stats_buyers_by_city(array $period, int $limit = 8): array
+{
+    return array_map(static fn(array $row): array => [
+        'city' => (string)$row['city'],
+        'buyers' => (int)$row['buyers'],
+        'orders' => (int)$row['orders_count'],
+    ], spice_fetch_all(
+        '
+        SELECT u.city, COUNT(DISTINCT o.user_id) AS buyers, COUNT(*) AS orders_count
+        FROM orders o
+        JOIN users u ON u.user_id = o.user_id
+        WHERE ' . stats_orders_where($period) . '
+        GROUP BY u.city
+        ORDER BY buyers DESC
+        LIMIT ' . max(1, $limit),
+        stats_bounds($period)
+    ));
+}
+
+function stats_users_growth(array $period): array
+{
+    $usersFilter = stats_users_demo_filter($period);
+    $before = spice_fetch_one(
+        "SELECT COUNT(*) AS users_count FROM users u WHERE u.created_at < :start $usersFilter",
+        ['start' => $period['start']]
+    );
+    $daily = stats_business_by_day($period);
+
+    // накопительный итог: пользователи до начала периода плюс регистрации по дням
+    $total = (int)($before['users_count'] ?? 0);
+    $cumulative = [];
+    foreach ($daily['new_users'] as $count) {
+        $total += (int)$count;
+        $cumulative[] = $total;
+    }
+
+    return ['dates' => $daily['dates'], 'labels' => $daily['labels'], 'new_users' => $daily['new_users'], 'total' => $cumulative];
+}
+
+function stats_reviews_summary(array $period): array
+{
+    $demoFilter = stats_users_demo_filter($period);
+    $params = stats_bounds($period);
+
+    $summary = spice_fetch_one(
+        "
+        SELECT
+            COUNT(*) AS reviews_count,
+            COALESCE(AVG(CASE WHEN r.status = 'published' THEN r.rating END), 0) AS avg_rating,
+            COALESCE(SUM(r.status = 'new'), 0) AS pending
+        FROM reviews r
+        JOIN users u ON u.user_id = r.user_id
+        WHERE r.created_at >= :start AND r.created_at < :end $demoFilter
+        ",
+        $params
+    ) ?? [];
+
+    $ratings = array_column(spice_fetch_all(
+        "
+        SELECT r.rating, COUNT(*) AS reviews_count
+        FROM reviews r
+        JOIN users u ON u.user_id = r.user_id
+        WHERE r.created_at >= :start AND r.created_at < :end $demoFilter
+        GROUP BY r.rating
+        ",
+        $params
+    ), 'reviews_count', 'rating');
+
+    $distribution = [];
+    for ($rating = 1; $rating <= 5; $rating++) {
+        $distribution[] = (int)($ratings[$rating] ?? 0);
+    }
+
+    return [
+        'count' => (int)($summary['reviews_count'] ?? 0),
+        'avg_rating' => round((float)($summary['avg_rating'] ?? 0), 2),
+        'pending' => (int)($summary['pending'] ?? 0),
+        'distribution' => $distribution,
+    ];
+}
+
+function stats_search_queries(array $period, int $limit = 10, bool $onlyEmpty = false): array
+{
+    $where = 's.created_at >= :start AND s.created_at < :end' . ($period['include_demo'] ? '' : ' AND s.is_demo = 0');
+
+    return spice_fetch_all(
+        "
+        SELECT s.query_text, COUNT(*) AS searches, MAX(s.results_count) AS results
+        FROM search_queries s
+        WHERE $where
+        GROUP BY s.query_text
+        " . ($onlyEmpty ? 'HAVING MAX(s.results_count) = 0' : '') . '
+        ORDER BY searches DESC
+        LIMIT ' . max(1, $limit),
+        stats_bounds($period)
+    );
+}
+
+function stats_low_stock(int $threshold = 10): array
+{
+    return spice_fetch_all(
+        '
+        SELECT p.name, c.name AS category_name, p.stock_quantity, p.price
+        FROM products p
+        JOIN categories c ON c.category_id = p.category_id
+        WHERE p.is_active = 1 AND p.stock_quantity < :threshold
+        ORDER BY p.stock_quantity, p.name
+        ',
+        ['threshold' => $threshold]
+    );
+}
+
 // Изменение к предыдущему периоду: для количеств — в процентах, для долей — в процентных пунктах
 function stats_delta(float $current, float $previous, bool $inPoints = false): ?float
 {
@@ -484,6 +754,23 @@ function stats_delta(float $current, float $previous, bool $inPoints = false): ?
     }
 
     return round(($current - $previous) / $previous * 100, 1);
+}
+
+// Склонение после числа: 1 проверка, 2 проверки, 5 проверок
+function stats_plural(int $count, string $one, string $few, string $many): string
+{
+    $mod100 = $count % 100;
+    $mod10 = $count % 10;
+
+    if ($mod100 >= 11 && $mod100 <= 14) {
+        return $many;
+    }
+
+    return match (true) {
+        $mod10 === 1 => $one,
+        $mod10 >= 2 && $mod10 <= 4 => $few,
+        default => $many,
+    };
 }
 
 function stats_format_number(float $value, int $decimals = 0): string

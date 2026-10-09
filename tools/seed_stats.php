@@ -464,10 +464,12 @@ final class StatsDemoSeeder
     private function addHit(array $visitor, string $sessionId, string $page, int $time, string $referrerType, ?string $referrerHost, ?int $userId, array $extra = []): void
     {
         $baseMs = self::RESPONSE_MS[$page] ?? 15;
-        $responseMs = $baseMs * $this->lognormal(1.0, 0.35) + (float)($extra['response_extra_ms'] ?? 0);
+        $responseMs = $baseMs * $this->lognormal(1.0, 0.35);
+        // редкие медленные ответы сервера, время ожидания API добавляется отдельно
         if ($this->rnd() < 0.015) {
             $responseMs *= 4 + 4 * $this->rnd();
         }
+        $responseMs += (float)($extra['response_extra_ms'] ?? 0);
 
         $this->hits[] = [
             'visitor_id' => $visitor['visitor_id'],

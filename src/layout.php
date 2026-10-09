@@ -126,11 +126,27 @@ function require_admin(): void
     exit;
 }
 
+function csrf_token(): string
+{
+    if (empty($_SESSION['spice_csrf'])) {
+        $_SESSION['spice_csrf'] = bin2hex(random_bytes(16));
+    }
+
+    return (string)$_SESSION['spice_csrf'];
+}
+
+function csrf_valid(mixed $token): bool
+{
+    return is_string($token) && !empty($_SESSION['spice_csrf']) && hash_equals((string)$_SESSION['spice_csrf'], $token);
+}
+
 function admin_nav(string $active): void
 {
     $items = [
         'tables' => ['/admin/', 'Таблицы БД'],
-        'stats' => ['/admin/stats.php', 'Статистика'],
+        'stats' => ['/admin/stats.php', 'Посещаемость'],
+        'sales' => ['/admin/sales.php', 'Продажи'],
+        'monitoring' => ['/admin/monitoring.php', 'Мониторинг'],
     ];
     ?>
     <nav class="admin-nav" aria-label="Разделы админ-панели">

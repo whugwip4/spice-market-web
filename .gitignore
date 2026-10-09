@@ -3,3 +3,4 @@
 .codex-server.pid
 storage/sessions/
 storage/logs/
+storage/monitor/

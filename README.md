@@ -34,7 +34,9 @@ http://127.0.0.1:8081/
 - `/delivery.php` - доставка и оплата.
 - `/contacts.php` - контакты.
 - `/admin/` - просмотр таблиц, представлений и журналов БД.
-- `/admin/stats.php` - статистика посещаемости и продаж.
+- `/admin/stats.php` - посещаемость: просмотры, посетители, источники, устройства.
+- `/admin/sales.php` - продажи: заказы, выручка, путь до заказа, отзывы, поиск.
+- `/admin/monitoring.php` - мониторинг: доступность, время ответа, ошибки, входы, API.
 
 ## Доступ администратора
 
@@ -85,3 +87,12 @@ IP-адрес не хранится — только его хэш SHA-256 с с
 & "C:\Program Files\xampp\php\php.exe" tools/seed_stats.php            # создать заново
 & "C:\Program Files\xampp\php\php.exe" tools/seed_stats.php --purge    # удалить демо-данные
 ```
+
+Проверка доступности сайта, MySQL и API TheMealDB (результат пишется в `health_checks`,
+для постоянного мониторинга команду запускают по расписанию, например раз в 15 минут):
+
+```powershell
+& "C:\Program Files\xampp\php\php.exe" tools/health_check.php
+```
+
+Данные любого графика выгружаются в CSV кнопкой «CSV» в его карточке (`/admin/export.php`).

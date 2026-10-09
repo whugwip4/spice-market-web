@@ -28,13 +28,32 @@
     const compact = new Intl.NumberFormat('ru-RU', { notation: 'compact', maximumFractionDigits: 1 });
 
     const formatValue = (unit, value) => {
+        if (value === null || value === undefined) {
+            return 'нет данных';
+        }
         if (unit === 'percent') {
             return `${formats.percent.format(value)} %`;
         }
         if (unit === 'ms') {
             return `${formats.ms.format(value)} мс`;
         }
+        if (unit === 'kb') {
+            return `${formats.decimal.format(value)} КБ`;
+        }
         return (formats[unit] || formats.count).format(value);
+    };
+
+    const formatTick = (unit, value) => {
+        if (unit === 'percent') {
+            return `${formats.percent.format(value)} %`;
+        }
+        if (unit === 'ms') {
+            return `${compact.format(value)} мс`;
+        }
+        if (unit === 'money') {
+            return `${compact.format(value)} ₽`;
+        }
+        return compact.format(value);
     };
 
     const alpha = (hex, opacity) => {
@@ -72,12 +91,15 @@
         },
     });
 
-    const valueAxis = {
-        beginAtZero: true,
+    const valueAxis = (spec) => ({
+        beginAtZero: spec.suggested_min === undefined,
+        suggestedMin: spec.suggested_min,
+        max: spec.max,
+        stacked: Boolean(spec.stacked),
         border: { display: false },
         grid: { color: chrome.grid },
-        ticks: { maxTicksLimit: 5, callback: (value) => compact.format(value) },
-    };
+        ticks: { maxTicksLimit: 5, callback: (value) => formatTick(spec.unit, value) },
+    });
 
     const categoryAxis = {
         grid: { display: false },
@@ -116,7 +138,8 @@
             }
 
             const values = chart.data.datasets[0].data;
-            const total = values.reduce((sum, value) => sum + value, 0) || 1;
+            // доля считается от суммы всех столбцов, а для воронки – от первого шага
+            const total = (options.shareBase === 'first' ? values[0] : values.reduce((sum, value) => sum + value, 0)) || 1;
             const { ctx } = chart;
 
             ctx.save();
@@ -149,6 +172,7 @@
                     fill: single ? 'origin' : false,
                     borderWidth: 2,
                     tension: 0.3,
+                    cubicInterpolationMode: 'monotone',
                     pointRadius: 0,
                     pointHoverRadius: 5,
                     pointHoverBorderWidth: 2,
@@ -172,7 +196,7 @@
                 },
                 scales: {
                     x: { ...categoryAxis, ticks: { ...categoryAxis.ticks, maxTicksLimit: 10 } },
-                    y: valueAxis,
+                    y: valueAxis(spec),
                 },
             },
             plugins: [crosshair],
@@ -188,8 +212,11 @@
                 data: series.values,
                 backgroundColor: palette[index],
                 hoverBackgroundColor: alpha(palette[index], 0.78),
-                borderRadius: 4,
+                // в составном столбце части разделены белой полосой, скругляется только верх
+                borderRadius: spec.stacked ? 0 : 4,
                 borderSkipped: 'start',
+                borderWidth: spec.stacked ? { top: 2 } : 0,
+                borderColor: chrome.surface,
                 maxBarThickness: 24,
                 categoryPercentage: 0.8,
                 barPercentage: 0.9,
@@ -208,16 +235,16 @@
                         label: (context) => ` ${formatValue(spec.unit, horizontal ? context.parsed.x : context.parsed.y)}  ${context.dataset.label}`,
                     },
                 },
-                barValueLabels: { enabled: horizontal, share: Boolean(spec.show_share), unit: spec.unit },
+                barValueLabels: { enabled: horizontal, share: Boolean(spec.show_share), shareBase: spec.share_base || 'sum', unit: spec.unit },
             },
             scales: horizontal
                 ? {
-                    x: valueAxis,
+                    x: valueAxis(spec),
                     y: { ...categoryAxis, ticks: { color: chrome.ink, autoSkip: false } },
                 }
                 : {
-                    x: categoryAxis,
-                    y: valueAxis,
+                    x: { ...categoryAxis, stacked: Boolean(spec.stacked), ticks: { ...categoryAxis.ticks, maxTicksLimit: spec.labels.length <= 24 ? 24 : 16 } },
+                    y: valueAxis(spec),
                 },
         },
         plugins: [barValueLabels],
@@ -256,7 +283,7 @@
                             color: chrome.ink,
                             generateLabels: (chart) => generateLabels(chart).map((item) => ({
                                 ...item,
-                                text: `${item.text} — ${share(values[item.index])}`,
+                                text: `${item.text} – ${share(values[item.index])}`,
                             })),
                         },
                     },
@@ -302,6 +329,8 @@
 
     const isEmpty = (spec) => !spec.series.length || spec.series.every((series) => series.values.every((value) => !value));
 
+    window.statsCharts = {};
+
     document.querySelectorAll('canvas[data-chart]').forEach((canvas) => {
         const key = canvas.dataset.chart;
         const spec = specs[key];
@@ -324,6 +353,6 @@
             return;
         }
 
-        new Chart(canvas, builders[spec.type](spec, box));
+        window.statsCharts[key] = new Chart(canvas, builders[spec.type](spec, box));
     });
 })();
